@@ -21,4 +21,4 @@ coverage.*
 *.log
 
 # 忽略本地题库文件
-questions.jsonquestions.json
+questions.json
