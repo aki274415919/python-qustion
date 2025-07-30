@@ -1,0 +1,24 @@
+# 忽略 Python 生成的临时和缓存文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyd
+
+# 忽略虚拟环境
+.venv/
+venv/
+env/
+
+# 忽略 IDE 配置
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# 忽略测试覆盖率和日志
+coverage.*
+*.log
+
+# 忽略本地题库文件
+questions.jsonquestions.json
