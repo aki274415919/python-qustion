@@ -1,0 +1,29 @@
+[
+    {
+      "question": "Which security functions map to the network components to realize the initial logical solution? (Choose all that apply.)",
+      "col_header": "Security Functions",
+      "row_header": "Network Components",
+      "col_names": ["Policy Orchestration", "Traffic Monitoring", "User Credentials", "Role-Based Access"],
+      "row_names": ["NGIPS", "ISE Local Database", "Layer-2 Switch", "SGACL"],
+      "answer": [
+        [0, 1, 0, 1],
+        [1, 0, 1, 0],
+        [0, 0, 1, 0],
+        [1, 0, 0, 1]
+      ]
+    },
+    {
+      "question": "Which attack surfaces are mapped to the corresponding security products in the proposed solution? (Choose all that apply.)",
+      "col_header": "Security Capabilities",
+      "row_header": "Attack Surfaces",
+      "col_names": ["FMC", "AMP Connector", "ISE", "DNAC", "Switch", "NGIPS", "FireAMP Cloud"],
+      "row_names": ["Network", "Application", "Human", "Device"],
+      "answer": [
+        [1, 0, 1, 0, 1, 1, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0],
+        [0, 1, 0, 0, 0, 0, 1]
+      ]
+    }
+  ]
+  
