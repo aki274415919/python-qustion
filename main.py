@@ -218,7 +218,7 @@ class QuizMain(QWidget):
         result = "✅ 合格" if score >= 800 else "❌ 不合格"
         msg = f"总分：{score}/1000\n\n正确题数：{correct_q}/{total_q}\n{result}"
         if wrong_detail:
-            msg += "\n\n错题：" + "，".join(wrong_detail)
+            msg += "\n\n错题：" + ",".join(wrong_detail)
         QMessageBox.information(self, "交卷结果", msg)
         self.show_answer = True
         self.update_ui()
