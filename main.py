@@ -91,17 +91,21 @@ class QuizMain(QWidget):
         self.commit_btn.setEnabled(not self.show_answer)
         self.finish_btn.setEnabled(not self.show_answer)
 
-    def save_check(self):
+        # 判题高亮（show_answer为True，且cross_table）
+        if self.show_answer and q["type"] == "cross_table":
+            self.cur_widget.set_review_mode(q["answer"], self.user_answers[self.cur_idx])
+
+    def save_check(self, *args, **kwargs):
         q = self.questions[self.cur_idx]
         if q["type"] == "cross_table":
             widget = self.cur_widget.table
-            rows, cols = widget.rowCount(), widget.columnCount()-1
-            for i in range(rows):
-                for j in range(cols):
-                    w = widget.cellWidget(i, j+1)
+            rows, cols = widget.rowCount(), widget.columnCount()
+            for i in range(1, rows):
+                for j in range(1, cols):
+                    w = widget.cellWidget(i, j)
                     if w is not None:
                         cb = w.findChild(QCheckBox)
-                        self.user_answers[self.cur_idx][i][j] = cb.isChecked()
+                        self.user_answers[self.cur_idx][i-1][j-1] = cb.isChecked()
         elif q["type"] == "single_choice":
             widget = self.cur_widget
             selected = widget.bg.checkedId()
@@ -110,7 +114,6 @@ class QuizMain(QWidget):
             widget = self.cur_widget
             self.user_answers[self.cur_idx] = [cb.isChecked() for cb in widget.checkboxes]
         elif q["type"] == "drag_image":
-            # 拖图题保存交互，后续实现，现在不处理
             pass
 
     def prev_q(self):
@@ -130,51 +133,96 @@ class QuizMain(QWidget):
         user = self.user_answers[self.cur_idx]
         if q["type"] == "cross_table":
             score, total, missed, over = self.grade(q['answer'], user)
-            QMessageBox.information(self, "本题批改", f"本题得分：{score}/{total}\n漏选：{missed}，多选：{over}")
+            if score == total and missed == 0 and over == 0:
+                msg = "🎉 全部选对！"
+            elif score == 0:
+                msg = "❌ 全部做错"
+            else:
+                msg_list = []
+                if score > 0:
+                    msg_list.append(f"选对：{score}")
+                if missed > 0:
+                    msg_list.append(f"漏选：{missed}")
+                if over > 0:
+                    msg_list.append(f"多选：{over}")
+                msg = ",".join(msg_list)
+            QMessageBox.information(self, "本题批改", msg)
+            self.show_answer = True
+            self.update_ui()
         elif q["type"] == "single_choice":
             score = 1 if user == q["answer"] else 0
-            QMessageBox.information(self, "本题批改", f"本题得分：{score}/1")
+            msg = "🎉 答对了！" if score else "❌ 答错了！"
+            QMessageBox.information(self, "本题批改", msg)
+            self.show_answer = True
+            self.update_ui()
         elif q["type"] == "multi_choice":
             ans_set = set(q["answer"])
             user_set = set(idx for idx, checked in enumerate(user) if checked)
             correct = len(ans_set & user_set)
             missed = len(ans_set - user_set)
             over = len(user_set - ans_set)
-            total = len(ans_set)
-            QMessageBox.information(self, "本题批改", f"本题得分：{correct}/{total}\n漏选：{missed}，多选：{over}")
+            if correct == len(ans_set) and missed == 0 and over == 0:
+                msg = "🎉 全部选对！"
+            elif correct == 0:
+                msg = "❌ 全部做错"
+            else:
+                msg_list = []
+                if correct > 0:
+                    msg_list.append(f"选对：{correct}")
+                if missed > 0:
+                    msg_list.append(f"漏选：{missed}")
+                if over > 0:
+                    msg_list.append(f"多选：{over}")
+                msg = ",".join(msg_list)
+            QMessageBox.information(self, "本题批改", msg)
+            self.show_answer = True
+            self.update_ui()
         elif q["type"] == "drag_image":
             QMessageBox.information(self, "本题批改", f"拖图题批改功能开发中~")
-        self.show_answer = True
-        self.update_ui()
+            self.show_answer = True
+            self.update_ui()
+
 
     def finish_all(self):
-        res = []
-        total_score, total_count = 0, 0
+        total_q = len(self.questions)
+        correct_q = 0
+        wrong_detail = []
         for idx, q in enumerate(self.questions):
             user = self.user_answers[idx]
             if q["type"] == "cross_table":
                 score, total, missed, over = self.grade(q['answer'], user)
-                res.append(f"第{idx+1}题：得分{score}/{total}（漏{missed}，多{over}）")
-                total_score += score
-                total_count += total
+                if score == total and missed == 0 and over == 0:
+                    correct_q += 1
+                else:
+                    wrong_detail.append(f"第{idx+1}题")
             elif q["type"] == "single_choice":
-                score = 1 if user == q["answer"] else 0
-                res.append(f"第{idx+1}题：得分{score}/1")
-                total_score += score
-                total_count += 1
+                if user == q["answer"]:
+                    correct_q += 1
+                else:
+                    wrong_detail.append(f"第{idx+1}题")
             elif q["type"] == "multi_choice":
                 ans_set = set(q["answer"])
                 user_set = set(idx for idx, checked in enumerate(user) if checked)
                 correct = len(ans_set & user_set)
-                total = len(ans_set)
-                res.append(f"第{idx+1}题：得分{correct}/{total}（漏{len(ans_set-user_set)}，多{len(user_set-ans_set)}）")
-                total_score += correct
-                total_count += total
+                missed = len(ans_set - user_set)
+                over = len(user_set - ans_set)
+                if correct == len(ans_set) and missed == 0 and over == 0:
+                    correct_q += 1
+                else:
+                    wrong_detail.append(f"第{idx+1}题")
             elif q["type"] == "drag_image":
-                res.append(f"第{idx+1}题：拖图题批改暂未实现")
-        QMessageBox.information(self, "交卷结果", f"总分：{total_score}/{total_count}\n\n" + "\n".join(res))
+                # 这里按全错处理，后续补充
+                wrong_detail.append(f"第{idx+1}题")
+        # 总分、合格判断
+        score = int(correct_q / total_q * 1000)
+        result = "✅ 合格" if score >= 800 else "❌ 不合格"
+        msg = f"总分：{score}/1000\n\n正确题数：{correct_q}/{total_q}\n{result}"
+        if wrong_detail:
+            msg += "\n\n错题：" + "，".join(wrong_detail)
+        QMessageBox.information(self, "交卷结果", msg)
         self.show_answer = True
         self.update_ui()
+
 
     @staticmethod
     def grade(ans, user):
