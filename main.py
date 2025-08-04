@@ -98,14 +98,8 @@ class QuizMain(QWidget):
     def save_check(self, *args, **kwargs):
         q = self.questions[self.cur_idx]
         if q["type"] == "cross_table":
-            widget = self.cur_widget.table
-            rows, cols = widget.rowCount(), widget.columnCount()
-            for i in range(1, rows):
-                for j in range(1, cols):
-                    w = widget.cellWidget(i, j)
-                    if w is not None:
-                        cb = w.findChild(QCheckBox)
-                        self.user_answers[self.cur_idx][i-1][j-1] = cb.isChecked()
+            # ✅ 修复点：直接调用 widget 内部提供的恢复顺序答案方法
+            self.user_answers[self.cur_idx] = self.cur_widget.get_current_answer()
         elif q["type"] == "single_choice":
             widget = self.cur_widget
             selected = widget.bg.checkedId()
@@ -115,6 +109,7 @@ class QuizMain(QWidget):
             self.user_answers[self.cur_idx] = [cb.isChecked() for cb in widget.checkboxes]
         elif q["type"] == "drag_image":
             pass
+
 
     def prev_q(self):
         self.save_check()
