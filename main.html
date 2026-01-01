@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Quiz（离线 HTML · 按 main.py 调度）</title>
+  <style>
+    :root{
+      --bg:#ffffff;
+      --panel:#f5f7fb;
+      --text:#111827;
+      --muted:#6b7280;
+      --accent:#2563eb;
+      --ok:#16a34a;
+      --bad:#dc2626;
+      --border:rgba(0,0,0,.12);
+      --shadow:0 10px 30px rgba(0,0,0,.10);
+      --radius:16px;
+
+      /* CrossTable 关键：大小/字体（对应 cross_table.py 的 cell_font_pt + resize/zoom） */
+      --cellFont: 13px;   /* 默认 13 */
+      --headFont: 15px;   /* cellFont+2 */
+      --cellPadY: 10px;
+      --cellPadX: 10px;
+      --firstColW: 260px; /* 左侧行名列宽（可调） */
+      --minTableW: 1200px;
+      --minTableH: 620px;
+      --checkScale: 1.15; /* checkbox 放大一点，视觉更像 PyQt */
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background: var(--bg);
+      color:var(--text);
+    }
+    .wrap{max-width:none;width:100%;margin:0;padding:18px 24px 40px}
+    .topbar{
+      display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+      background:#ffffff;
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      padding:14px 14px;
+      box-shadow:var(--shadow);
+    }
+    .brand{display:flex;align-items:center;gap:10px}
+    .dot{width:10px;height:10px;border-radius:999px;background:var(--accent);box-shadow:0 0 0 4px rgba(74,163,255,.18)}
+    .title{font-weight:800;letter-spacing:.2px}
+    .sub{color:var(--muted);font-size:12px;margin-top:2px}
+    .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .btn{
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.05);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      user-select:none;
+      transition:.15s transform,.15s background,.15s border-color;
+      font-weight:650;
+      white-space:nowrap;
+    }
+    .btn:hover{transform:translateY(-1px);background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18)}
+    .btn:active{transform:translateY(0px)}
+    .btn.primary{background:rgba(74,163,255,.18);border-color:rgba(74,163,255,.35)}
+    .btn.primary:hover{background:rgba(74,163,255,.25)}
+    .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+    .pill{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      font-size:12px;
+      color:var(--muted);
+      padding:6px 10px;
+      border:1px solid var(--border);
+      border-radius:999px;
+      background:#f9fafb;
+    }
+    .grid{display:grid;grid-template-columns: 1fr;gap:14px;margin-top:14px}
+    .card{
+      background:#ffffff;
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      padding:16px;
+      box-shadow:var(--shadow);
+    }
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    .progress{
+      flex:1;height:10px;background:rgba(255,255,255,.08);
+      border-radius:999px;overflow:hidden;border:1px solid var(--border);min-width:220px
+    }
+    .progress > div{height:100%;background:linear-gradient(90deg,var(--accent),#8dd1ff);width:0%}
+    .qtitle{font-size:18px;font-weight:800;line-height:1.25;margin:0 0 8px}
+    .qmeta{color:var(--muted);font-size:12px;margin:0 0 14px}
+    .hr{height:1px;background:rgba(255,255,255,.10);margin:14px 0}
+    .msg{
+      border-radius:14px;padding:12px 12px;border:1px solid var(--border);
+      background:#f9fafb;line-height:1.35
+    }
+    .msg.ok{border-color:rgba(34,197,94,.35); background:rgba(34,197,94,.12)}
+    .msg.bad{border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.12)}
+    .msg.warn{border-color:rgba(245,158,11,.35); background:rgba(245,158,11,.12)}
+    .small{font-size:12px;color:var(--muted)}
+    .dropzone{
+      display:flex;align-items:center;justify-content:center;gap:10px;
+      padding:14px;border-radius:14px;border:1px dashed rgba(0,0,0,.22);
+      background:#f9fafb;cursor:pointer;
+    }
+    .dropzone:hover{background:rgba(255,255,255,.05)}
+    input[type=file]{display:none}
+
+    /* ---- Choice ---- */
+    .opts{display:flex;flex-direction:column;gap:10px}
+    .opt{
+      display:flex;gap:10px;align-items:flex-start;
+      border:1px solid var(--border);
+      border-radius:14px;padding:10px 12px;
+      background:#f9fafb;cursor:pointer;
+      transition:.12s background,.12s border-color;
+    }
+    .opt:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.18)}
+    .opt input{margin-top:2px}
+    .opt .txt{flex:1;line-height:1.25}
+
+    /* ---- CrossTable (对应 PyQt: QHeaderView.Stretch + sync_row_heights) ---- */
+    .tableOuter{
+      border:1px solid var(--border);
+      border-radius:14px;
+      overflow:auto;
+      min-height: var(--minTableH);
+      background:#ffffff;
+      display:flex;
+      flex-direction:column;
+    }
+    table.ct{
+      border-collapse:separate;border-spacing:0;
+      width:100%;
+      min-width: var(--minTableW);
+      table-layout: fixed; /* 等宽关键 */
+      background:#ffffff;
+      height:100%;
+    }
+    table.ct col.first { width: var(--firstColW); }
+    table.ct col.other { width: auto; } /* 其余列平分剩余空间 */
+
+    table.ct th, table.ct td{
+      padding: var(--cellPadY) var(--cellPadX);
+      border-bottom:1px solid var(--border);
+      border-right:1px solid var(--border);
+      vertical-align:middle;
+    }
+    table.ct th{
+      position:sticky;top:0;
+      background:#f3f4f6;
+      backdrop-filter: blur(8px);
+      z-index:2;
+      font-weight:800;
+      font-size: var(--headFont);
+      text-align:center;
+      line-height:1.15;
+    }
+    table.ct th:first-child{
+      left:0; z-index:3;
+      text-align:center;
+    }
+    table.ct td:first-child{
+      position:sticky;left:0;
+      background:#f3f4f6;
+      backdrop-filter: blur(8px);
+      z-index:1;
+      font-weight:800;
+      font-size: var(--headFont);
+      text-align:center;
+      line-height:1.15;
+    }
+    table.ct tr:last-child td{border-bottom:none}
+    table.ct td:last-child, table.ct th:last-child{border-right:none}
+
+    .ctCell{
+      display:flex;align-items:center;justify-content:center;
+      height: 100%;
+      min-height: calc(var(--cellFont) * 2.2 + var(--cellPadY) * 2);
+    }
+    .ctCell input[type="checkbox"]{
+      transform: scale(var(--checkScale));
+      transform-origin: center;
+      cursor:pointer;
+    }
+    /* 批改颜色（对应 cross_table.py：绿色/红色/白色） */
+    .bg-ok{ background: rgba(163,245,172,.45) !important; }
+    .bg-bad{ background: rgba(255,179,179,.50) !important; }
+    .bg-empty{ background: rgba(0,0,0,.00) !important; }
+
+    .footer{margin-top:12px;color:var(--muted);font-size:12px;line-height:1.45}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace}
+  
+    /* ---- Light theme overrides ---- */
+    .topbar, .card{
+      background: #ffffff;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+    .btn{
+      background:#ffffff;
+      border-color: var(--border);
+      color: var(--text);
+    }
+    .btn:hover{background: rgba(37,99,235,.06); border-color: rgba(37,99,235,.25)}
+    .btn.primary{background: rgba(37,99,235,.12); border-color: rgba(37,99,235,.30)}
+    .pill{background:#ffffff}
+    .dropzone{background:#ffffff;border-color:rgba(0,0,0,.18)}
+    .opt{background:#ffffff;border-color:rgba(0,0,0,.12)}
+    .opt:hover{background:rgba(37,99,235,.05);border-color:rgba(37,99,235,.25)}
+    .msg{background:#ffffff;border-color:rgba(0,0,0,.12)}
+    .msg.ok{border-color:rgba(22,163,74,.35); background:rgba(22,163,74,.08)}
+    .msg.bad{border-color:rgba(220,38,38,.35); background:rgba(220,38,38,.08)}
+    .msg.warn{border-color:rgba(245,158,11,.35); background:rgba(245,158,11,.10)}
+    .progress{background:rgba(0,0,0,.08);border-color:rgba(0,0,0,.10)}
+    .progress > div{background:linear-gradient(90deg,var(--accent),#60a5fa)}
+    .tableOuter{border-color:rgba(0,0,0,.12);background:#ffffff}
+    table.ct{background:#ffffff}
+    table.ct th{
+      background: rgba(245,247,251,.98);
+      border-color:rgba(0,0,0,.08);
+      color: var(--text);
+    }
+    table.ct td:first-child{
+      background: rgba(245,247,251,.92);
+      border-color:rgba(0,0,0,.08);
+      color: var(--text);
+    }
+    table.ct th, table.ct td{
+      border-bottom-color:rgba(0,0,0,.08);
+      border-right-color:rgba(0,0,0,.08);
+    }
+    .bg-ok{ background: rgba(34,197,94,.18) !important; }
+    .bg-bad{ background: rgba(239,68,68,.16) !important; }
+    .bg-empty{ background: rgba(255,255,255,0) !important; }
+
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="dot"></div>
+        <div>
+          <div class="title">Quiz（离线 HTML · 按 <span class="mono">main.py</span> 调度）</div>
+          <div class="sub">读 <span class="mono">questions.json</span>（通过文件选择/拖拽），支持 single_choice / multi_choice / cross_table。</div>
+        </div>
+      </div>
+      <div class="controls">
+        <label class="btn primary" for="fileInput">📄 选择 questions.json</label>
+        <input id="fileInput" type="file" accept=".json"/>
+        <button class="btn" id="btnReset" disabled>🔄 重置</button>
+        <span class="pill" id="pillInfo">未加载</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card" id="loadCard">
+        <div class="dropzone" id="dropzone">
+          <span style="font-size:18px">⬇️</span>
+          <div>
+            <div style="font-weight:800">把 <span class="mono">questions.json</span> 拖到这里</div>
+            <div class="small">或点击右上角“选择 questions.json”。</div>
+          </div>
+        </div>
+        <div class="footer">
+          这个版本按你桌面端的思路：题目整体洗牌；<span class="mono">cross_table</span> 行/列再单独洗牌；提交后可显示批改颜色。
+        </div>
+      </div>
+
+      <div class="card" id="quizCard" style="display:none">
+        <div class="row" style="gap:10px">
+          <div class="progress"><div id="bar"></div></div>
+          <span class="pill" id="pillIdx">0 / 0</span>
+          <span class="pill" id="pillType">—</span>
+          <span class="pill" id="pillQid">—</span>
+        </div>
+
+        <div class="hr"></div>
+
+        <h2 class="qtitle" id="qTitle">—</h2>
+        <div class="qmeta" id="qMeta">—</div>
+
+        <div id="content"></div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <button class="btn" id="btnPrev">⬅ 上一题</button>
+          <button class="btn" id="btnNext">下一题 ➡</button>
+          <div style="flex:1"></div>
+          <button class="btn primary" id="btnCheck">✅ 提交本题</button>
+          <button class="btn" id="btnShow">👀 显示答案</button>
+          <button class="btn" id="btnZoomIn" title="cross_table 放大">放大</button>
+          <button class="btn" id="btnZoomOut" title="cross_table 缩小">缩小</button>
+          <button class="btn" id="btnFinish">🧾 交卷算分</button>
+        </div>
+
+        <div style="margin-top:12px;display:none" id="msgBox" class="msg"></div>
+        <div style="margin-top:12px;display:none" id="ansBox" class="msg"></div>
+
+        <div class="footer">
+          <b>cross_table 尺寸/显示</b>：使用 <span class="mono">table-layout:fixed</span> 模拟 PyQt 的 Stretch；左列宽可调（CSS 变量 <span class="mono">--firstColW</span>）。<br/>
+          放大/缩小只影响 cross_table 字体与行高（对应桌面端 <span class="mono">cell_font_pt</span>）。
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* -------------------------
+   0) Helpers
+------------------------- */
+const el = (id)=>document.getElementById(id);
+const loadCard = el("loadCard");
+const quizCard = el("quizCard");
+const content = el("content");
+const qTitle = el("qTitle");
+const qMeta = el("qMeta");
+const bar = el("bar");
+const pillInfo = el("pillInfo");
+const pillIdx = el("pillIdx");
+const pillType = el("pillType");
+const pillQid = el("pillQid");
+const msgBox = el("msgBox");
+const ansBox = el("ansBox");
+const btnPrev = el("btnPrev");
+const btnNext = el("btnNext");
+const btnCheck = el("btnCheck");
+const btnShow = el("btnShow");
+const btnFinish = el("btnFinish");
+const btnReset = el("btnReset");
+const btnZoomIn = el("btnZoomIn");
+const btnZoomOut = el("btnZoomOut");
+const dropzone = el("dropzone");
+const fileInput = el("fileInput");
+
+function escapeHtml(s){
+  return (s??"").toString()
+    .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;").replaceAll("'","&#039;");
+}
+function setMessage(kind, html){
+  msgBox.style.display = "block";
+  msgBox.className = "msg " + (kind || "");
+  msgBox.innerHTML = html;
+}
+function clearMessage(){
+  msgBox.style.display = "none";
+  msgBox.innerHTML = "";
+  msgBox.className = "msg";
+}
+function setAnswerBox(html){
+  ansBox.style.display = "block";
+  ansBox.innerHTML = html;
+}
+function clearAnswerBox(){
+  ansBox.style.display = "none";
+  ansBox.innerHTML = "";
+}
+
+/* -------------------------
+   1) State (localStorage)
+   - 题库通过文件选择载入，浏览器安全模型不能自动读文件，所以：
+     localStorage 只保存“同一个文件签名”的进度
+------------------------- */
+const LS_KEY = "quiz_from_questions_json_v1";
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return null;
+    return JSON.parse(raw);
+  }catch(e){ return null; }
+}
+function saveState(state){
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){}
+}
+function clearState(){
+  try{ localStorage.removeItem(LS_KEY); }catch(e){}
+}
+
+function hashStr(s){
+  let h = 2166136261;
+  for(let i=0;i<s.length;i++){
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function mulberry32(a){ return function(){ let t = a += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; } }
+function rand32(){
+  try{
+    const u = new Uint32Array(1);
+    const c = (typeof window !== "undefined" && window.crypto) ? window.crypto : (typeof crypto !== "undefined" ? crypto : null);
+    if(c && c.getRandomValues){ c.getRandomValues(u); return u[0]>>>0; }
+  }catch(e){}
+  return (Math.floor(Math.random()*0x100000000)>>>0);
+}
+function shuffleDeterministic(items, seed){
+  const rnd = mulberry32(seed >>> 0);
+  const a = [...items];
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(rnd()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+let app = {
+  sessionSeed: 0,
+  optionShuffle: {},
+
+  fileSig: null,
+  questions: [],
+  order: [],
+  curIdx: 0,
+  userAnswers: [],      // 按 order 的“题序”存（贴近 main.py）
+  showAnswer: false,
+  committed: [],        // 是否提交过
+  wrong: [],            // 错题标记
+
+  // cross_table：每题单独保存 row/col 洗牌映射（贴近 CrossTableWidget 的 row_indices/col_indices）
+  crossShuffle: {},     // key: curIdx -> { rowIndices:[], colIndices:[] }
+
+  // cross_table zoom (cell_font_pt)
+  cellFontPt: 13
+};
+
+function applyZoomToCSS(){
+  // python: head = cell+2
+  const cell = app.cellFontPt;
+  document.documentElement.style.setProperty("--cellFont", `${cell}px`);
+  document.documentElement.style.setProperty("--headFont", `${cell+2}px`);
+  // 行高/内边距略随字体变化（让“看起来像” PyQt 的 sync_row_heights）
+  const padY = Math.max(6, Math.min(16, Math.round(cell * 0.75)));
+  document.documentElement.style.setProperty("--cellPadY", `${padY}px`);
+}
+
+/* -------------------------
+   2) Init user_answers like main.py
+------------------------- */
+function initUserAnswers(questionsInOrder){
+  const ua = [];
+  for(const q of questionsInOrder){
+    if(q.type === "cross_table"){
+      const rows = (q.row_names||[]).length;
+      const cols = (q.col_names?.[0]?.items||[]).length;
+      const m = [];
+      for(let i=0;i<rows;i++){
+        m.push(new Array(cols).fill(false));
+      }
+      ua.push(m);
+    }else if(q.type === "single_choice"){
+      ua.push(null);
+    }else if(q.type === "multi_choice"){
+      const n = (q.options||[]).length;
+      ua.push(new Array(n).fill(false));
+    }else{
+      ua.push(null);
+    }
+  }
+  return ua;
+}
+
+/* -------------------------
+   3) Cross shuffle (per question index)
+   - main.py: questions already shuffled; cross_table 内部再次 shuffle row/col
+------------------------- */
+function ensureCrossShuffle(idx){
+  if(app.crossShuffle[idx]) return;
+  const q = app.questions[idx];
+  const rowCnt = (q.row_names||[]).length;
+  const colCnt = (q.col_names?.[0]?.items||[]).length;
+
+  const seed = hashStr(app.fileSig + "|CROSS|" + idx + "|" + app.sessionSeed);
+  const rowIndices = shuffleDeterministic([...Array(rowCnt).keys()], seed ^ 0xA5A5A5A5);
+  const colIndices = shuffleDeterministic([...Array(colCnt).keys()], seed ^ 0x3C3C3C3C);
+  app.crossShuffle[idx] = { rowIndices, colIndices };
+
+/* -------------------------
+   3.5) Option shuffle (per question)
+   - single/multi 选项展示顺序也随机，但答案索引仍按原始 options 下标存
+------------------------- */
+function ensureOptionShuffle(idx){
+  if(app.optionShuffle[idx]) return;
+  const q = app.questions[idx];
+  if(!q || !Array.isArray(q.options) || q.options.length === 0) return;
+  const seed = hashStr(app.fileSig + "|OPT|" + idx + "|" + app.sessionSeed);
+  const perm = shuffleDeterministic([...Array(q.options.length).keys()], seed ^ 0xBADC0DE);
+  app.optionShuffle[idx] = perm;
+}
+}
+
+/* -------------------------
+   4) Grade (贴近 main.py)
+------------------------- */
+function gradeCross(std, user){
+  let correct=0, total=0, missed=0, over=0;
+  for(let i=0;i<std.length;i++){
+    for(let j=0;j<std[0].length;j++){
+      const a = !!std[i][j];
+      const u = !!user[i][j];
+      if(a){
+        total += 1;
+        if(u) correct += 1;
+        else missed += 1;
+      }else{
+        if(u) over += 1;
+      }
+    }
+  }
+  return {correct,total,missed,over};
+}
+function gradeSingle(ansIndex, userIndex){
+  return userIndex !== null && userIndex === ansIndex;
+}
+function gradeMulti(ansArr, userFlags){
+  const ans = new Set(ansArr);
+  const user = new Set();
+  userFlags.forEach((v,i)=>{ if(v) user.add(i); });
+  if(user.size !== ans.size) return false;
+  for(const x of user){ if(!ans.has(x)) return false; }
+  return true;
+}
+
+/* -------------------------
+   5) Render per type (main.py: update_ui)
+------------------------- */
+function render(){
+  if(app.questions.length === 0){
+    loadCard.style.display = "block";
+    quizCard.style.display = "none";
+    pillInfo.textContent = "未加载";
+    return;
+  }
+
+  loadCard.style.display = "none";
+  quizCard.style.display = "block";
+  btnReset.disabled = false;
+
+  const total = app.questions.length;
+  const q = app.questions[app.curIdx];
+  pillInfo.textContent = `已加载：${total}题`;
+  pillIdx.textContent = `${app.curIdx+1} / ${total}`;
+  pillType.textContent = q.type || "—";
+  pillQid.textContent = `idx=${app.curIdx}`;
+  bar.style.width = `${Math.round(((app.curIdx+1)/total)*100)}%`;
+
+  qTitle.textContent = q.question || "(无题干)";
+  qMeta.innerHTML = `类型：<span class="mono">${escapeHtml(q.type||"")}</span>`;
+
+  btnPrev.disabled = (app.curIdx === 0);
+  btnNext.disabled = (app.curIdx === total-1);
+
+  clearMessage();
+  if(!app.showAnswer) clearAnswerBox();
+
+  content.innerHTML = "";
+
+  if(q.type === "single_choice") renderSingle(q);
+  else if(q.type === "multi_choice") renderMulti(q);
+  else if(q.type === "cross_table") renderCrossTable(q);
+  else content.innerHTML = `<div class="msg warn">未知题型：${escapeHtml(q.type)}</div>`;
+
+  if(app.showAnswer){
+    setAnswerBox(renderAnswerHTML(q));
+  }
+
+  applyZoomToCSS();
+  saveState(app);
+}
+
+function renderSingle(q){
+  ensureOptionShuffle(app.curIdx);
+  const perm = app.optionShuffle[app.curIdx] || (q.options||[]).map((_,i)=>i);
+  const opts = q.options || [];
+  const user = app.userAnswers[app.curIdx];
+
+  const box = document.createElement("div");
+  box.className = "opts";
+
+  perm.forEach((origIdx)=>{
+    const opt = opts[origIdx];
+    const row = document.createElement("label");
+    row.className = "opt";
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "single_" + app.curIdx;
+    input.checked = (user === origIdx);
+    input.onchange = ()=>{
+      app.userAnswers[app.curIdx] = origIdx;
+      saveState(app);
+    };
+    const txt = document.createElement("div");
+    txt.className = "txt";
+    txt.textContent = opt;
+    row.appendChild(input); row.appendChild(txt);
+    box.appendChild(row);
+  });
+
+  content.appendChild(box);
+}
+
+function renderMulti(q){
+  ensureOptionShuffle(app.curIdx);
+  const perm = app.optionShuffle[app.curIdx] || (q.options||[]).map((_,i)=>i);
+  const opts = q.options || [];
+  let flags = app.userAnswers[app.curIdx];
+  if(!Array.isArray(flags) || flags.length !== opts.length){
+    flags = new Array(opts.length).fill(false);
+    app.userAnswers[app.curIdx] = flags;
+  }
+
+  const box = document.createElement("div");
+  box.className = "opts";
+  perm.forEach((origIdx)=>{
+    const opt = opts[origIdx];
+    const row = document.createElement("label");
+    row.className = "opt";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = !!flags[origIdx];
+    input.onchange = ()=>{
+      flags[origIdx] = input.checked;
+      app.userAnswers[app.curIdx] = flags;
+      saveState(app);
+    };
+    const txt = document.createElement("div");
+    txt.className = "txt";
+    txt.textContent = opt;
+    row.appendChild(input); row.appendChild(txt);
+    box.appendChild(row);
+  });
+  content.appendChild(box);
+}
+
+function renderCrossTable(q){
+  ensureCrossShuffle(app.curIdx);
+
+  const shuffle = app.crossShuffle[app.curIdx];
+  const rowIndices = shuffle.rowIndices;
+  const colIndices = shuffle.colIndices;
+
+  const rowNames = q.row_names || [];
+  const colItems = q.col_names?.[0]?.items || [];
+
+  let user = app.userAnswers[app.curIdx];
+  const rowCnt = rowNames.length;
+  const colCnt = colItems.length;
+
+  // 防御：保证二维矩阵
+  if(!Array.isArray(user) || user.length !== rowCnt || (rowCnt>0 && user[0].length !== colCnt)){
+    user = [];
+    for(let i=0;i<rowCnt;i++) user.push(new Array(colCnt).fill(false));
+    app.userAnswers[app.curIdx] = user;
+  }
+
+  const outer = document.createElement("div");
+  outer.className = "tableOuter";
+
+  const table = document.createElement("table");
+  table.className = "ct";
+
+  // colgroup：固定左列宽，其他平分
+  const colgroup = document.createElement("colgroup");
+  const c0 = document.createElement("col");
+  c0.className = "first";
+  colgroup.appendChild(c0);
+  for(let j=0;j<colCnt;j++){
+    const c = document.createElement("col");
+    c.className = "other";
+    colgroup.appendChild(c);
+  }
+  table.appendChild(colgroup);
+
+  // header row
+  const trh = document.createElement("tr");
+  const th0 = document.createElement("th");
+  th0.textContent = ""; // 左上角空白（PyQt 也给空白 head_item）
+  trh.appendChild(th0);
+  colIndices.forEach((cj)=>{
+    const th = document.createElement("th");
+    th.textContent = colItems[cj];
+    trh.appendChild(th);
+  });
+  table.appendChild(trh);
+
+  // body rows
+  rowIndices.forEach((ri)=>{
+    const tr = document.createElement("tr");
+    const td0 = document.createElement("td");
+    td0.textContent = rowNames[ri];
+    tr.appendChild(td0);
+
+    colIndices.forEach((cj)=>{
+      const td = document.createElement("td");
+      const div = document.createElement("div");
+      div.className = "ctCell";
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !!user[ri][cj];
+      cb.onchange = ()=>{
+        user[ri][cj] = cb.checked;   // 注意：存回原始坐标（ri/cj 是原始索引）
+        app.userAnswers[app.curIdx] = user;
+        saveState(app);
+      };
+      div.appendChild(cb);
+      td.appendChild(div);
+      tr.appendChild(td);
+    });
+
+    table.appendChild(tr);
+  });
+
+  outer.appendChild(table);
+  content.appendChild(outer);
+
+  // 如果已提交且 showAnswer：做“颜色批改”（对应 cross_table.py show_standard_answer）
+  if(app.showAnswer && app.committed[app.curIdx]){
+    paintCrossGrading(table, q.answer, user, rowIndices, colIndices);
+  }
+}
+
+function paintCrossGrading(table, stdAnswer, user, rowIndices, colIndices){
+  // table: [0] header row; col 0 is row label
+  // We paint only data cells.
+  // rowIndices/colIndices are display order but user/std are in original order.
+  const rows = table.rows.length;
+  const cols = table.rows[0].cells.length;
+
+  for(let r=1;r<rows;r++){
+    for(let c=1;c<cols;c++){
+      const origI = rowIndices[r-1];
+      const origJ = colIndices[c-1];
+      const should = !!stdAnswer[origI][origJ];
+      const u = !!user[origI][origJ];
+
+      const cell = table.rows[r].cells[c];
+      cell.classList.remove("bg-ok","bg-bad","bg-empty");
+      if(should && u) cell.classList.add("bg-ok");
+      else if(should && !u) cell.classList.add("bg-bad");
+      else if(!should && u) cell.classList.add("bg-bad");
+      else cell.classList.add("bg-empty");
+    }
+  }
+}
+
+/* -------------------------
+   6) Answer view
+------------------------- */
+function renderAnswerHTML(q){
+  if(q.type === "single_choice"){
+    return `<b>正确答案：</b> ${escapeHtml(q.options?.[q.answer] ?? String(q.answer))}`;
+  }
+  if(q.type === "multi_choice"){
+    const parts = (q.answer||[]).map(i => q.options?.[i] ?? String(i));
+    return `<b>正确答案：</b><br>` + parts.map(x=>"• "+escapeHtml(x)).join("<br>");
+  }
+  if(q.type === "cross_table"){
+    // 展示“应选坐标”的列表（简洁）
+    const rowNames = q.row_names||[];
+    const colItems = q.col_names?.[0]?.items||[];
+    const picks = [];
+    for(let i=0;i<q.answer.length;i++){
+      for(let j=0;j<q.answer[0].length;j++){
+        if(q.answer[i][j]){
+          picks.push(`<span class="mono">${escapeHtml(rowNames[i])}</span> → ${escapeHtml(colItems[j])}`);
+        }
+      }
+    }
+    return `<b>参考答案（应选项）：</b><br>` + (picks.length ? picks.map(x=>"• "+x).join("<br>") : "<span class='small'>（无应选项）</span>");
+  }
+  return "";
+}
+
+/* -------------------------
+   7) Actions (commit_q / finish_all)
+------------------------- */
+function commitCurrent(){
+  const q = app.questions[app.curIdx];
+  const user = app.userAnswers[app.curIdx];
+
+  app.committed[app.curIdx] = true;
+
+  if(q.type === "cross_table"){
+    const {correct,total,missed,over} = gradeCross(q.answer, user);
+    let msg = "";
+    if(correct === total && missed === 0 && over === 0) msg = "🎉 全部选对！";
+    else if(correct === 0 && total > 0) msg = "❌ 全部做错";
+    else {
+      const parts = [];
+      if(correct>0) parts.push(`选对：${correct}`);
+      if(missed>0) parts.push(`漏选：${missed}`);
+      if(over>0) parts.push(`多选：${over}`);
+      msg = parts.join("，");
+    }
+    const ok = (correct === total && missed===0 && over===0);
+    app.wrong[app.curIdx] = !ok;
+    setMessage(ok ? "ok" : "bad", msg);
+    app.showAnswer = true;
+    setAnswerBox(renderAnswerHTML(q));
+    // 重新渲染以便上色
+    render();
+    return;
+  }
+
+  if(q.type === "single_choice"){
+    const ok = gradeSingle(q.answer, user);
+    app.wrong[app.curIdx] = !ok;
+    setMessage(ok ? "ok" : "bad", ok ? "🎉 正确！" : "❌ 错误。<br><br>"+renderAnswerHTML(q));
+    app.showAnswer = true;
+    setAnswerBox(renderAnswerHTML(q));
+    saveState(app);
+    return;
+  }
+
+  if(q.type === "multi_choice"){
+    const ok = gradeMulti(q.answer, user);
+    app.wrong[app.curIdx] = !ok;
+    setMessage(ok ? "ok" : "bad", ok ? "🎉 正确！" : "❌ 错误（多选题需要完全一致）。<br><br>"+renderAnswerHTML(q));
+    app.showAnswer = true;
+    setAnswerBox(renderAnswerHTML(q));
+    saveState(app);
+    return;
+  }
+}
+
+function finishAll(){
+  const total = app.questions.length;
+  let correctQ = 0;
+  const wrongDetail = [];
+  for(let i=0;i<total;i++){
+    const q = app.questions[i];
+    const u = app.userAnswers[i];
+
+    let ok = false;
+    if(q.type === "single_choice") ok = gradeSingle(q.answer, u);
+    else if(q.type === "multi_choice") ok = gradeMulti(q.answer, u);
+    else if(q.type === "cross_table"){
+      const {correct,total:tt,missed,over} = gradeCross(q.answer, u);
+      ok = (correct===tt && missed===0 && over===0);
+    }
+
+    if(ok) correctQ++;
+    else wrongDetail.push(`第${i+1}题`);
+  }
+
+  const score = total ? Math.floor((correctQ/total)*1000) : 0;
+  const result = (score >= 800) ? "✅ 合格" : "❌ 不合格";
+  let msg = `总分：${score}/1000<br><br>正确题数：${correctQ}/${total}<br>${result}`;
+  if(wrongDetail.length) msg += `<br><br>错题：${wrongDetail.join("，")}`;
+
+  setMessage(score>=800 ? "ok" : "bad", msg);
+  app.showAnswer = true;
+  saveState(app);
+}
+
+/* -------------------------
+   8) Events
+------------------------- */
+btnPrev.addEventListener("click", ()=>{
+  app.curIdx = Math.max(0, app.curIdx-1);
+  app.showAnswer = false;
+  clearAnswerBox();
+  render();
+});
+btnNext.addEventListener("click", ()=>{
+  app.curIdx = Math.min(app.questions.length-1, app.curIdx+1);
+  app.showAnswer = false;
+  clearAnswerBox();
+  render();
+});
+btnCheck.addEventListener("click", ()=> commitCurrent());
+btnShow.addEventListener("click", ()=>{
+  app.showAnswer = !app.showAnswer;
+  if(app.showAnswer) setAnswerBox(renderAnswerHTML(app.questions[app.curIdx]));
+  else clearAnswerBox();
+  saveState(app);
+});
+btnFinish.addEventListener("click", ()=> finishAll());
+
+btnZoomIn.addEventListener("click", ()=>{
+  // cross_table.py: cell_font_pt clamped 9..28
+  app.cellFontPt = Math.min(28, app.cellFontPt + 1);
+  applyZoomToCSS();
+  saveState(app);
+  // 不强制重建勾选，只重渲染当前题（table 需要重新计算行高）
+  render();
+});
+btnZoomOut.addEventListener("click", ()=>{
+  app.cellFontPt = Math.max(9, app.cellFontPt - 1);
+  applyZoomToCSS();
+  saveState(app);
+  render();
+});
+
+btnReset.addEventListener("click", ()=>{
+  if(confirm("确定要清空进度并重新洗牌吗？")){
+    clearState();
+    // 保留已加载题库，但重置状态
+    const fileSig = app.fileSig;
+    const questionsRaw = app.rawQuestions || app.questions;
+    initFromQuestions(fileSig, questionsRaw, null, true);
+    render();
+  }
+});
+
+dropzone.addEventListener("click", ()=> fileInput.click());
+dropzone.addEventListener("dragover", (e)=>{ e.preventDefault(); dropzone.style.borderColor="rgba(74,163,255,.55)"; });
+dropzone.addEventListener("dragleave", ()=>{ dropzone.style.borderColor="rgba(255,255,255,.22)"; });
+dropzone.addEventListener("drop", (e)=>{
+  e.preventDefault();
+  dropzone.style.borderColor="rgba(255,255,255,.22)";
+  const f = e.dataTransfer.files?.[0];
+  if(f) readFile(f);
+});
+fileInput.addEventListener("change", (e)=>{
+  const f = e.target.files?.[0];
+  if(f) readFile(f);
+});
+
+function initFromQuestions(fileSig, questionsRaw, oldState, forceNewSeed){
+  // 1) main.py: questions = random.sample(questions, len(questions))
+  //    这里用“确定性洗牌”：同一个文件每次同样顺序，避免刷新顺序变化导致答案对不上
+  const sessionSeed = (!forceNewSeed && oldState && oldState.sessionSeed) ? (oldState.sessionSeed>>>0) : rand32();
+  const seed = hashStr(fileSig + "|ORDER|" + sessionSeed);
+  const idxs = shuffleDeterministic([...Array(questionsRaw.length).keys()], seed);
+  const questions = idxs.map(i => questionsRaw[i]);
+
+  const base = {
+    fileSig,
+    sessionSeed,
+    rawQuestions: questionsRaw,
+    optionShuffle: {},
+    questions,
+    order: idxs,
+    curIdx: 0,
+    userAnswers: initUserAnswers(questions),
+    showAnswer: false,
+    committed: new Array(questions.length).fill(false),
+    wrong: new Array(questions.length).fill(false),
+    crossShuffle: {},
+    cellFontPt: 13
+  };
+
+  app = oldState ? Object.assign(base, oldState) : base;
+
+  // 防御：如果 oldState 的题数不一致，放弃 oldState
+  if(oldState && oldState.questions?.length !== questions.length){
+    app = base;
+  }
+  // 保证 questions 以最新解析的为准（避免 localStorage 里存旧题干）
+  app.questions = questions;
+  // 防御：seed/选项洗牌表
+  if(!app.sessionSeed) app.sessionSeed = sessionSeed;
+  if(!app.optionShuffle) app.optionShuffle = {};
+  if(!app.rawQuestions) app.rawQuestions = questionsRaw;
+
+  applyZoomToCSS();
+  saveState(app);
+}
+
+function readFile(file){
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    const sig = file.name + "|" + file.size + "|" + file.lastModified;
+    try{
+      const raw = JSON.parse(String(reader.result));
+      if(!Array.isArray(raw)) throw new Error("questions.json 顶层必须是数组");
+
+      // 恢复进度：只有 fileSig 一样才恢复
+      const old = loadState();
+      const useOld = old && old.fileSig === sig ? old : null;
+
+      initFromQuestions(sig, raw, useOld, false);
+
+      setMessage("ok", `✅ 题库加载成功：${app.questions.length} 题（文件：<span class="mono">${escapeHtml(file.name)}</span>）`);
+      render();
+    }catch(err){
+      console.error(err);
+      setMessage("bad", "解析失败： " + escapeHtml(err.message || String(err)));
+    }
+  };
+  reader.readAsText(file, "utf-8");
+}
+
+/* -------------------------
+   9) Boot
+------------------------- */
+(function boot(){
+  const old = loadState();
+  if(old){
+    pillInfo.textContent = "检测到历史进度（需重新选择同一份 questions.json 才能恢复）";
+  }
+  applyZoomToCSS();
+})();
+</script>
+</body>
+</html>
